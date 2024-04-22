@@ -4,36 +4,45 @@ import java.net.NetworkInterface;
 import java.util.Enumeration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 import Demo.*;
 
 public class PrinterI implements Printer {
 
-    private CallbackPrx currentCallback;
-    private PrinterPrx printerPrx;
-    private Map<String, CallbackPrx> clients = new ConcurrentHashMap<>();
+    private PrinterCallbackPrx currentCallback;
+    private Map<String, PrinterCallbackPrx> clients = new ConcurrentHashMap<>();
+    private java.util.concurrent.Executors Executors;
+    private ExecutorService threadPool = Executors.newFixedThreadPool(6);
 
-    public void printString(String s, CallbackPrx client, com.zeroc.Ice.Current current) {
+    private String username;
 
-        new Thread(() -> {
+    public String printString(String s, PrinterCallbackPrx client, com.zeroc.Ice.Current current) {
+
+        Runnable run = new Thread(() -> {
             try {
                 currentCallback = client;
-                String[] info = s.split(":");
-                String newClient = info[0] + " : " + info[1];
-                clients.putIfAbsent(newClient, client);
+                String newClient = s.split("=")[0];
+                username = newClient.split(":")[1];
+                clients.putIfAbsent(username, client);
 
                 String response = process(s);
 
-                client.callbackClient(new Response(0, "Server response: " + response));
+                client.callbackString(response);
 
             } catch (Exception e) {
                 e.printStackTrace();
-                client.callbackClient(null);
+                client.callbackString("Thread error");
             }
 
-        }).start();
+        });
+        threadPool.execute(run);
+        return "Request processed";
     }
 
     private String process(String s) {
+
         String[] parts = s.split("=");
         try {
             String check = parts[1];
@@ -97,15 +106,19 @@ public class PrinterI implements Printer {
                 return getClientsList();
             }
             if (parts[1].startsWith("BC")) {
-                return broadcast(parts[1], currentCallback);
+                return broadcast(parts[1]);
             }
             if (parts[1].startsWith("to")) {
-                String[] command = parts[1].split(":");
-                String name = command[0].split(" ")[1];
+                String name = parts[1].split(" ")[1];
                 return sendToClient(parts[1], name);
             }
+            if (parts[1].equals("exit")) {
+                clients.remove(username);
+                System.out.println("User " + username + " removed");
+                System.out.println("Remaining clients: " + clients);
+            }
         } catch (Exception e) {
-            System.out.println("Nothing here.");
+            System.out.println("Exception");
         }
         return "";
     }
@@ -150,21 +163,21 @@ public class PrinterI implements Printer {
 
     private String getClientsList() {
         StringBuilder serverMessage = new StringBuilder();
-        for (Map.Entry<String, CallbackPrx> entry : clients.entrySet()) {
-            serverMessage.append(entry.getKey()).append(" ").append(entry.getValue()).append("\n");
+        for (Map.Entry<String, PrinterCallbackPrx> entry : clients.entrySet()) {
+            serverMessage.append(entry.getKey()).append("\n");
         }
 
         return serverMessage.toString();
     }
 
-    private String broadcast(String s, CallbackPrx client) {
+    private String broadcast(String s) {
         StringBuilder serverMessage = new StringBuilder();
 
-        for (Map.Entry<String, CallbackPrx> entry : clients.entrySet()) {
-            if (entry.getValue() != client) {
-                Demo.CallbackPrx otherClient = entry.getValue();
+        for (Map.Entry<String, PrinterCallbackPrx> entry : clients.entrySet()) {
+            if (entry.getValue() != currentCallback) {
+                Demo.PrinterCallbackPrx otherClient = entry.getValue();
                 serverMessage.append("Message sent to ").append(entry.getKey()).append("\n");
-                printerPrx.printString("Broadcast message: " + s, otherClient);
+                otherClient.callbackString("Broadcast message: " + s);
             }
         }
 
@@ -173,13 +186,18 @@ public class PrinterI implements Printer {
 
     public String sendToClient(String s, String key) {
         StringBuilder messageTo = new StringBuilder();
-
-        for (Map.Entry<String, CallbackPrx> entry : clients.entrySet()) {
+        boolean found = false;
+        for (Map.Entry<String, PrinterCallbackPrx> entry : clients.entrySet()) {
             if (entry.getKey().equals(key)) {
-                Demo.CallbackPrx toClient = entry.getValue();
+                found = true;
+                Demo.PrinterCallbackPrx toClient = entry.getValue();
                 messageTo.append("Message sent to ").append(entry.getKey()).append("\n");
-                printerPrx.printString("Someone whispered: " + s, toClient);
+                toClient.callbackString("Someone whispered: " + s);
+                break;
             }
+        }
+        if (!found) {
+            messageTo.append("User not found");
         }
         return messageTo.toString();
     }

@@ -1,6 +1,6 @@
 import com.zeroc.Ice.ObjectPrx;
 
-import Demo.CallbackPrx;
+import Demo.PrinterCallbackPrx;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -26,28 +26,61 @@ public class Client
             ObjectPrx prx = adapter.add(object, com.zeroc.Ice.Util.stringToIdentity("CallbackService"));
             adapter.activate();
 
-            CallbackPrx clprx=CallbackPrx.uncheckedCast(prx);
+            PrinterCallbackPrx clprx=PrinterCallbackPrx.uncheckedCast(prx);
             BufferedReader consoleInput = new BufferedReader(new InputStreamReader(System.in));
             try{
                 String client = System.getProperty("user.name") + ":" + java.net.InetAddress.getLocalHost().getHostName() + "=";
 
                 while (true) {
-                    System.out.print("Enter message (or 'exit' to quit): ");
+                    System.out.print("Enter message ('exit' to quit or 'atr' to show attributes'): ");
                     String userInput = consoleInput.readLine();
-
-                    if ("exit".equalsIgnoreCase(userInput)) {
-                        break;
-                    }
 
                     String message = client + userInput;
 
                     service.printString(message,clprx);
+
+                    if ("exit".equalsIgnoreCase(userInput)) {
+                        System.out.println("Bye bye!");
+                        break;
+                    }
+
+                    if ("atr".equalsIgnoreCase(userInput)) {
+
+                        int requests = 1;
+                        double start = System.currentTimeMillis();
+                        double end = 0;
+                        int missed = 0;
+                        int processed = 0;
+                        double latency = 0;
+
+                        while (2000 > end - start){
+                            double startRequest = System.currentTimeMillis();
+                            try {
+                                service.printString(client + " is testing: " + userInput, clprx);
+                                processed++;
+                            } catch (Exception e) {
+                                missed++;
+                            };
+                            end = System.currentTimeMillis();
+
+                            System.out.println("\nRequest Number: " + requests);
+                            requests++;
+                            System.out.println("Response Time (ms): " + (end - startRequest));
+
+                            latency += end - startRequest;
+                        }
+
+                        System.out.println("\n\n" + "Miss Rate: " + (missed/2000)*100 + "%");
+                        System.out.println("\n" + "Average Response Time: " + latency/ (double) (missed + processed));
+                        System.out.println("\n" + "A total of " + (missed + processed) + " requests were sent in 5000 ms");
+
+                    }
                 }
             } catch(Exception e){
                 e.printStackTrace();
             }
             System.out.println("callback invoked");
-            communicator.waitForShutdown();
+            communicator.shutdown();
         }
     }
 }

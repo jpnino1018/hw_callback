@@ -1,13 +1,12 @@
+
 import com.zeroc.Ice.Current;
 
-import Demo.Response;
-
-public class CallbackImpl implements Demo.Callback{
+public class CallbackImpl implements Demo.PrinterCallback{
 
     @Override
-    public void callbackClient(Response response, Current current) {
+    public void callbackString(String s, Current current) {
         
-        System.out.println("\n"+response.value);
+        System.out.println("\n"+s);
     }
     
 }
